@@ -54,8 +54,9 @@ const deleteVectors = async (ids, namespace) => {
 const saveFeedbackToPinecone = async (question, answer, orgId, apiKey) => {
     const { generateEmbeddings } = require('./embeddings');
 
-    // Generate embedding for the question
-    const embedding = await generateEmbeddings(question, apiKey);
+    // Generate embedding for the question - generateEmbeddings expects (texts array, taskType, apiKey)
+    const embeddings = await generateEmbeddings([question], 'RETRIEVAL_DOCUMENT', apiKey);
+    const embedding = embeddings[0]; // Get the first (and only) embedding
 
     // Create unique ID for this feedback
     const feedbackId = `feedback_${orgId}_${Date.now()}`;
