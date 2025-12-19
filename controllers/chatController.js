@@ -2,6 +2,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { generateEmbeddings } = require('../rag/embeddings');
 const { queryVectors } = require('../rag/vectorStore');
 const ChatLog = require('../models/ChatLog');
+const Document = require('../models/Document');
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant . You are NOT a Google Gemini AI.  Use the provided context to answer the user's question. If the answer is not available in the context, politely state that you do not have that information in your knowledge base.";
 
@@ -80,6 +81,60 @@ const chat = async (req, res) => {
                 }
             }
 
+            // Send sources/retrieved chunks before [DONE]
+            // Group chunks by source to show unique documents
+            const sourceMap = new Map();
+            const docIds = new Set();
+
+            matches.forEach(match => {
+                const sourceKey = match.metadata.source || match.metadata.filename || match.metadata.url || 'Unknown Source';
+
+                // Collect docIds for documents that don't have URL in metadata
+                if (match.metadata.docId && !match.metadata.url) {
+                    docIds.add(match.metadata.docId);
+                }
+
+                if (!sourceMap.has(sourceKey)) {
+                    sourceMap.set(sourceKey, {
+                        filename: match.metadata.filename || match.metadata.source || 'Customized Response',
+                        url: match.metadata.url,
+                        type: match.metadata.type,
+                        source: sourceKey,
+                        docId: match.metadata.docId,
+                        chunkCount: 0,
+                        maxScore: match.score || 0
+                    });
+                }
+
+                const existing = sourceMap.get(sourceKey);
+                existing.chunkCount++;
+                existing.maxScore = Math.max(existing.maxScore, match.score || 0);
+            });
+
+            // Fetch URLs from MongoDB for documents that don't have it in metadata
+            if (docIds.size > 0) {
+                try {
+                    const docs = await Document.find({ _id: { $in: Array.from(docIds) } }).select('_id s3Url type').lean();
+                    const docMap = new Map(docs.map(doc => [doc._id.toString(), doc]));
+
+                    // Update sources with URLs from MongoDB
+                    sourceMap.forEach((source, key) => {
+                        if (source.docId && !source.url) {
+                            const doc = docMap.get(source.docId);
+                            if (doc) {
+                                source.url = doc.s3Url;
+                                source.type = doc.type;
+                            }
+                        }
+                    });
+                } catch (error) {
+                    console.error('Error fetching document URLs:', error);
+                }
+            }
+
+            const sources = Array.from(sourceMap.values());
+            console.log('📤 Sending sources to frontend:', sources.length, 'unique sources from', matches.length, 'chunks');
+            res.write(`data: ${JSON.stringify({ sources })}\n\n`);
             res.write('data: [DONE]\n\n');
             res.end();
 
