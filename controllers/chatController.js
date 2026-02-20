@@ -6,6 +6,23 @@ const Document = require('../models/Document');
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant . You are NOT a Google Gemini AI.  Use the provided context to answer the user's question. If the answer is not available in the context, politely state that you do not have that information in your knowledge base.";
 
+// Retry helper with exponential backoff for transient API errors (503, 429)
+const retryWithBackoff = async (fn, maxRetries = 3, baseDelay = 1000) => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            const isRetryable = error.status === 503 || error.status === 429;
+            if (!isRetryable || attempt === maxRetries) {
+                throw error;
+            }
+            const delay = baseDelay * Math.pow(2, attempt); // 1s, 2s, 4s
+            console.log(`⚠️ API returned ${error.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+};
+
 const chat = async (req, res) => {
     const { message, history } = req.body;
     const org = req.org;
@@ -29,8 +46,17 @@ const chat = async (req, res) => {
         // Note: generateEmbeddings expects array and now accepts API key parameter
         const [embedding] = await generateEmbeddings([message], 'RETRIEVAL_QUERY', geminiApiKey);
 
-        // 2. Query Pinecone
-        const matches = await queryVectors(embedding, org.orgId);
+        // 2. Query Pinecone (retrieve more chunks for better context coverage)
+        const matches = await queryVectors(embedding, org.orgId, 15);
+
+        // Debug: Log retrieved chunks and their relevance scores
+        console.log(`🔍 Query: "${message}"`);
+        console.log(`📦 Retrieved ${matches.length} chunks:`);
+        matches.forEach((m, i) => {
+            const preview = (m.metadata.text || '').substring(0, 80).replace(/\n/g, ' ');
+            console.log(`  [${i + 1}] Score: ${m.score?.toFixed(4)} | ${preview}...`);
+        });
+
         const context = matches.map(match => match.metadata.text).join('\n\n');
 
         // 3. Construct Prompt
@@ -52,7 +78,7 @@ const chat = async (req, res) => {
             chatHistory.shift();
         }
 
-        const chat = model.startChat({
+        const chatSession = model.startChat({
             history: chatHistory,
             generationConfig: {
                 temperature: 0.7,
@@ -69,7 +95,7 @@ const chat = async (req, res) => {
         res.setHeader('Connection', 'keep-alive');
 
         try {
-            const result = await chat.sendMessageStream(finalMessage);
+            const result = await retryWithBackoff(() => chatSession.sendMessageStream(finalMessage));
 
             let fullResponse = ''; // Initialize fullResponse here
 

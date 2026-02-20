@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 // const { EMBEDDING_MODEL } = require('../../shared/constants');
 
-const EMBEDDING_MODEL = "text-embedding-004";
+const EMBEDDING_MODEL = "gemini-embedding-001";
 
 const generateEmbeddings = async (texts, taskType = 'RETRIEVAL_DOCUMENT', apiKey = null) => {
     // Use provided API key or fall back to environment variable
@@ -25,7 +25,8 @@ const generateEmbeddings = async (texts, taskType = 'RETRIEVAL_DOCUMENT', apiKey
 
         const requests = batchTexts.map(t => ({
             content: { parts: [{ text: t }] },
-            taskType: taskType
+            taskType: taskType,
+            outputDimensionality: 768
         }));
 
         try {

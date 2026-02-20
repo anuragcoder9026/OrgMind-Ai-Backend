@@ -70,7 +70,7 @@ const testGeminiApiKey = async (req, res) => {
         // Test the API key by making a simple request
         const { GoogleGenerativeAI } = require('@google/generative-ai');
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
         console.log('Making test request to Gemini...');
 

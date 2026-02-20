@@ -54,14 +54,46 @@ const extractTextFromUrl = async (url) => {
         });
         const $ = cheerio.load(data);
 
-        // Remove scripts, styles, and other non-content elements
+        // Remove only non-content elements (keep header/footer/nav as they may contain important info like contact details)
         $('script').remove();
         $('style').remove();
-        $('nav').remove();
-        $('footer').remove();
-        $('header').remove();
+        $('noscript').remove();
+        $('iframe').remove();
 
-        const text = $('body').text().replace(/\s+/g, ' ').trim();
+        // Extract structured content preserving headings and sections
+        const contentParts = [];
+
+        // Extract all email addresses from the page (often in mailto: links or text)
+        const emails = [];
+        $('a[href^="mailto:"]').each((_, el) => {
+            emails.push($(el).attr('href').replace('mailto:', ''));
+        });
+
+        // Process content with heading context for better chunking
+        $('h1, h2, h3, h4, h5, h6, p, li, td, th, span, div, a, blockquote, address').each((_, el) => {
+            const tag = el.tagName.toLowerCase();
+            const text = $(el).clone().children().remove().end().text().trim();
+            if (text) {
+                // Add heading markers so chunker preserves section context
+                if (tag.startsWith('h')) {
+                    contentParts.push(`\n[${tag.toUpperCase()}] ${text}\n`);
+                } else {
+                    contentParts.push(text);
+                }
+            }
+        });
+
+        // If structured extraction yielded little content, fall back to full body text
+        let text = contentParts.length > 10
+            ? contentParts.join(' ')
+            : $('body').text();
+
+        // Append any found emails as explicit contact info
+        if (emails.length > 0) {
+            text += `\n\nContact Emails: ${[...new Set(emails)].join(', ')}`;
+        }
+
+        text = text.replace(/\s+/g, ' ').trim();
         return text;
     } catch (error) {
         console.error('Error scraping URL:', error);

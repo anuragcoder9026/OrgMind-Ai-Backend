@@ -17,9 +17,15 @@ const upsertVectors = async (vectors, namespace) => {
     // In v3, we get the index object directly
     const index = client.index(process.env.PINECONE_INDEX);
 
-    // v3 syntax for upsert is slightly different, it takes an array directly or object
-    // .upsert([...]) is correct for recent versions
-    await index.namespace(namespace).upsert(vectors);
+    // Batch size to avoid exceeding Pinecone's 2MB request limit
+    const BATCH_SIZE = 100;
+
+    // Process vectors in batches
+    for (let i = 0; i < vectors.length; i += BATCH_SIZE) {
+        const batch = vectors.slice(i, i + BATCH_SIZE);
+        await index.namespace(namespace).upsert(batch);
+        console.log(`Upserted batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(vectors.length / BATCH_SIZE)} (${batch.length} vectors)`);
+    }
 };
 
 const queryVectors = async (vector, namespace, topK = 10) => {

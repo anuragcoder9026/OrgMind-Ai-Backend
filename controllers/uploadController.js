@@ -39,7 +39,7 @@ const processDocument = async (doc, orgId, geminiApiKey) => {
                 text: chunk,
                 docId: doc._id.toString(),
                 orgId: orgId,
-                filename: doc.type === 'file' ? doc.filename : null,
+                ...(doc.type === 'file' && { filename: doc.filename }), // Only include filename for files
                 url: doc.s3Url, // This will be S3 URL for files, or original URL for scraped pages
                 type: doc.type, // 'file' or 'url'
                 source: doc.filename || doc.s3Url

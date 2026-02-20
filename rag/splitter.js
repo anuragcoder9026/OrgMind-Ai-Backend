@@ -1,7 +1,7 @@
 const { RecursiveCharacterTextSplitter } = require('langchain/text_splitter');
 
-const CHUNK_SIZE = 500;
-const CHUNK_OVERLAP = 100;
+const CHUNK_SIZE = 1000;
+const CHUNK_OVERLAP = 200;
 
 const splitText = async (text) => {
     const splitter = new RecursiveCharacterTextSplitter({
